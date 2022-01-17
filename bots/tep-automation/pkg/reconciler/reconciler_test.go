@@ -332,8 +332,23 @@ func TestReconcileKind(t *testing.T) {
 			defer closeFunc()
 
 			tgc := ghclient.NewTEPGHClient(ghClient)
+
+			foundTrackingIssuesRequest := false
 			for k, v := range tc.requests {
 				mux.HandleFunc(k, v)
+				if k == fmt.Sprintf("/repos/%s/%s/issues", ghclient.TEPsOwner, ghclient.TEPsRepo) {
+					foundTrackingIssuesRequest = true
+				}
+			}
+			if !foundTrackingIssuesRequest {
+				mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/issues", ghclient.TEPsOwner, ghclient.TEPsRepo),
+					func(w http.ResponseWriter, r *http.Request) {
+						respBody, err := json.Marshal([]*github.Issue{})
+						if err != nil {
+							t.Fatal("marshalling GitHub issue list")
+						}
+						_, _ = fmt.Fprint(w, string(respBody))
+					})
 			}
 
 			r := &reconciler.Reconciler{

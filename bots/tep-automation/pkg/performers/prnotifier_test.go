@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v41/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,7 +85,9 @@ func TestPRNotifier_Perform(t *testing.T) {
 		paramOverrides    map[string]string
 		additionalParams  map[string]string
 		requests          map[string]func(w http.ResponseWriter, r *http.Request)
+		existingIssues    []*github.Issue
 		doesNothing       bool
+		modifiedIssues    []expectedIssue
 		expectedEventType string
 		expectedReason    string
 		expectedErr       error
@@ -135,6 +138,54 @@ func TestPRNotifier_Perform(t *testing.T) {
 				testutil.ReadmeURL:                           testutil.DefaultREADMEHandlerFunc(),
 				"/repos/tektoncd/pipeline/issues/1/comments": testutil.NoCommentsOnPRHandlerFunc(t),
 			},
+			existingIssues: []*github.Issue{{
+				Title:  github.String("TEP-1234 Tracking Issue"),
+				Number: github.Int(2),
+				State:  github.String("open"),
+				Assignees: []*github.User{
+					{
+						Login: github.String("abayer"),
+					},
+					{
+						Login: github.String("vdemeester"),
+					},
+				},
+				Labels: []*github.Label{
+					{
+						Name: github.String(ghclient.TrackingIssueLabel),
+					},
+					{
+						Name: github.String(tep.ProposedStatus.TrackingLabel()),
+					},
+				},
+				Body: github.String(`<!-- TEP PR: 55 -->
+<!-- Implementation PR: repo: pipeline number: 77 -->
+<!-- Implementation PR: repo: triggers number: 88 -->`),
+			}},
+			modifiedIssues: []expectedIssue{{
+				TrackingIssue: tep.TrackingIssue{
+					IssueNumber: 2,
+					TEPStatus:   tep.ProposedStatus,
+					TEPID:       "1234",
+					TEPPRs:      []int{55},
+					Assignees:   []string{"abayer", "vdemeester"},
+					ImplementationPRs: []tep.ImplementationPR{
+						{
+							Repo:   "pipeline",
+							Number: 77,
+						},
+						{
+							Repo:   "triggers",
+							Number: 88,
+						},
+						{
+							Repo:   "pipeline",
+							Number: 1,
+						},
+					},
+				},
+				filename: "1234-something-or-other.md",
+			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "CommentAdded",
 		},
@@ -172,6 +223,103 @@ func TestPRNotifier_Perform(t *testing.T) {
 					require.NoError(t, err)
 					require.Contains(t, string(body), "TEP-5678")
 					_, _ = fmt.Fprint(w, `{"id":1}`)
+				},
+			},
+			existingIssues: []*github.Issue{
+				{
+					Title:  github.String("TEP-1234 Tracking Issue"),
+					Number: github.Int(2),
+					State:  github.String("open"),
+					Assignees: []*github.User{
+						{
+							Login: github.String("abayer"),
+						},
+						{
+							Login: github.String("vdemeester"),
+						},
+					},
+					Labels: []*github.Label{
+						{
+							Name: github.String(ghclient.TrackingIssueLabel),
+						},
+						{
+							Name: github.String(tep.ProposedStatus.TrackingLabel()),
+						},
+					},
+					Body: github.String(`<!-- TEP PR: 55 -->
+<!-- Implementation PR: repo: pipeline number: 77 -->
+<!-- Implementation PR: repo: triggers number: 88 -->`),
+				},
+				{
+					Title:  github.String("TEP-5678 Tracking Issue"),
+					Number: github.Int(5),
+					State:  github.String("open"),
+					Assignees: []*github.User{
+						{
+							Login: github.String("abayer"),
+						},
+					},
+					Labels: []*github.Label{
+						{
+							Name: github.String(ghclient.TrackingIssueLabel),
+						},
+						{
+							Name: github.String(tep.ImplementableStatus.TrackingLabel()),
+						},
+					},
+					Body: github.String(`<!-- TEP PR: 55 -->
+<!-- Implementation PR: repo: pipeline number: 77 -->
+<!-- Implementation PR: repo: triggers number: 88 -->`),
+				},
+			},
+			modifiedIssues: []expectedIssue{
+				{
+					TrackingIssue: tep.TrackingIssue{
+						IssueNumber: 2,
+						TEPStatus:   tep.ProposedStatus,
+						TEPID:       "1234",
+						TEPPRs:      []int{55},
+						Assignees:   []string{"abayer", "vdemeester"},
+						ImplementationPRs: []tep.ImplementationPR{
+							{
+								Repo:   "pipeline",
+								Number: 77,
+							},
+							{
+								Repo:   "triggers",
+								Number: 88,
+							},
+							{
+								Repo:   "pipeline",
+								Number: 1,
+							},
+						},
+					},
+					filename: "1234-something-or-other.md",
+				},
+				{
+					TrackingIssue: tep.TrackingIssue{
+						IssueNumber: 5,
+						TEPStatus:   tep.ImplementableStatus,
+						TEPID:       "5678",
+						TEPPRs:      []int{55},
+						Assignees:   []string{"abayer"},
+						ImplementationPRs: []tep.ImplementationPR{
+							{
+								Repo:   "pipeline",
+								Number: 77,
+							},
+							{
+								Repo:   "triggers",
+								Number: 88,
+							},
+							{
+								Repo:   "pipeline",
+								Number: 1,
+							},
+						},
+					},
+					filename: "5678-second-one.md",
 				},
 			},
 			expectedEventType: corev1.EventTypeNormal,
@@ -238,6 +386,31 @@ func TestPRNotifier_Perform(t *testing.T) {
 					}
 				},
 			},
+			existingIssues: []*github.Issue{{
+				Title:  github.String("TEP-4321 Tracking Issue"),
+				Number: github.Int(7),
+				State:  github.String("open"),
+				Assignees: []*github.User{
+					{
+						Login: github.String("abayer"),
+					},
+					{
+						Login: github.String("vdemeester"),
+					},
+				},
+				Labels: []*github.Label{
+					{
+						Name: github.String(ghclient.TrackingIssueLabel),
+					},
+					{
+						Name: github.String(tep.ImplementingStatus.TrackingLabel()),
+					},
+				},
+				Body: github.String(`<!-- TEP PR: 55 -->
+<!-- Implementation PR: repo: pipeline number: 77 -->
+<!-- Implementation PR: repo: triggers number: 88 -->
+<!-- Implementation PR: repo: pipeline number: 1 -->`),
+			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "CommentAdded",
 		},
@@ -254,6 +427,38 @@ func TestPRNotifier_Perform(t *testing.T) {
 
 			for k, v := range tc.requests {
 				mux.HandleFunc(k, v)
+			}
+
+			mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/issues", ghclient.TEPsOwner, ghclient.TEPsRepo),
+				func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, "GET", r.Method)
+					respBody, err := json.Marshal(tc.existingIssues)
+					if err != nil {
+						t.Fatal("marshalling GitHub issue list")
+					}
+					_, _ = fmt.Fprint(w, string(respBody))
+				})
+
+			modifiedIssueCalls := 0
+
+			for _, modified := range tc.modifiedIssues {
+				ir := modified.toIssueRequest(t)
+				mux.HandleFunc(fmt.Sprintf("/repos/tektoncd/community/issues/%d", modified.IssueNumber),
+					func(w http.ResponseWriter, r *http.Request) {
+						v := new(github.IssueRequest)
+						require.NoError(t, json.NewDecoder(r.Body).Decode(v))
+
+						require.Equal(t, "PATCH", r.Method)
+
+						assert.Equal(t, ir.GetBody(), v.GetBody())
+						if d := cmp.Diff(ir, v); d != "" {
+							t.Errorf("difference in PATCH body: %s", d)
+						}
+
+						modifiedIssueCalls++
+
+						_, _ = fmt.Fprint(w, `{"number":1}`)
+					})
 			}
 
 			n := performers.NewPRNotifier(tgc)
@@ -289,6 +494,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 						if recEvt.Reason != tc.expectedReason {
 							t.Errorf("Expected reason to be %q but was %q", tc.expectedReason, recEvt.Reason)
 						}
+						assert.Equal(t, len(tc.modifiedIssues), modifiedIssueCalls, "wrong number of issue modification calls")
 					}
 				}
 			}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/tektoncd/plumbing/bots/tep-automation/pkg/ghclient"
 	"github.com/tektoncd/plumbing/bots/tep-automation/pkg/tep"
 	"go.uber.org/zap"
@@ -72,6 +73,10 @@ func (n *PRNotifier) Perform(ctx context.Context, opts *PerformerOptions) krecon
 	if err != nil {
 		return kreconciler.NewEvent(corev1.EventTypeWarning, "LoadingPRTEPs", "Failure loading TEPs for %s/%s PR #%d: %s", ghclient.TEPsOwner, opts.Repo, opts.PRNumber, err)
 	}
+	trackingIssues, err := n.GHClient.GetTrackingIssues(ctx, &ghclient.GetTrackingIssuesOptions{IssueState: "open"})
+	if err != nil {
+		return kreconciler.NewEvent(corev1.EventTypeWarning, "LoadingTrackingIssues", "Failure loading existing tracking issues: %s", err)
+	}
 
 	var tepsForComment []tep.TEPInfo
 	var commentFunc func([]tep.TEPInfo) string
@@ -95,6 +100,13 @@ func (n *PRNotifier) Perform(ctx context.Context, opts *PerformerOptions) krecon
 
 		if shouldInclude {
 			tepsForComment = append(tepsForComment, t)
+		}
+
+		// Update the tracking issue.
+		if ti, ok := trackingIssues[t.ID]; ok {
+			if err := n.updateIssue(ctx, t, ti, opts, logger); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -179,6 +191,27 @@ func (n *PRNotifier) TEPsInPR(ctx context.Context, prTitle, prBody string) (map[
 	}
 
 	return tepsWithInfo, nil
+}
+
+func (n *PRNotifier) updateIssue(ctx context.Context, tepInfo tep.TEPInfo, origIssue *tep.TrackingIssue, opts *PerformerOptions, logger *zap.SugaredLogger) kreconciler.Event {
+	updatedIssue := &tep.TrackingIssue{}
+	*updatedIssue = *origIssue
+	updatedIssue.AddImplementationPR(opts.Repo, opts.PRNumber)
+
+	if !cmp.Equal(origIssue, updatedIssue) {
+		issueBody, err := updatedIssue.GetBody(tepInfo.Filename)
+		if err != nil {
+			return kreconciler.NewEvent(corev1.EventTypeWarning, "TrackingIssueBody", "Failure generating tracking issue body for issue %d: %s", updatedIssue.IssueNumber, err)
+		}
+		logger.Infof("Updating tracking issue %d for TEP-%s in PR tektoncd/%s #%d", updatedIssue.IssueNumber, updatedIssue.TEPID, opts.Repo, opts.PRNumber)
+		if err := n.GHClient.UpdateTrackingIssue(ctx, updatedIssue.IssueNumber, updatedIssue.TEPID, issueBody, updatedIssue.Assignees, updatedIssue.TEPStatus); err != nil {
+			return kreconciler.NewEvent(corev1.EventTypeWarning, "UpdatingTrackingIssue", "Failure updating tracking issue for issue %d: %s", updatedIssue.IssueNumber, err)
+		}
+	} else {
+		logger.Infof("No changes needed for tracking issue %d for TEP-%s", updatedIssue.IssueNumber, updatedIssue.TEPID)
+	}
+
+	return nil
 }
 
 // PROpenedComment returns the appropriate GitHub Markdown-formatted content for the PR comment on opened/edited PRs
