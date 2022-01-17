@@ -8,11 +8,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/tektoncd/plumbing/bots/tep-automation/pkg/tep"
-
 	"github.com/google/go-github/v41/github"
+	"github.com/stretchr/testify/require"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tektoncd/plumbing/bots/tep-automation/pkg/ghclient"
+	"github.com/tektoncd/plumbing/bots/tep-automation/pkg/tep"
 )
 
 const (
@@ -41,6 +41,28 @@ var (
 		tep.GitRevisionParamName: "someSha",
 	}
 )
+
+// ExpectedIssue is used by tests that expect a tracking issue to be created or modified
+type ExpectedIssue struct {
+	tep.TrackingIssue
+	Filename string
+}
+
+// ToIssueRequest translates an ExpectedIssue into a github.IssueRequest
+func (ei ExpectedIssue) ToIssueRequest(t *testing.T) *github.IssueRequest {
+	body, err := ei.GetBody(ei.Filename)
+	require.NoError(t, err)
+
+	return &github.IssueRequest{
+		Title: github.String(fmt.Sprintf(ghclient.TrackingIssueTitleFmt, ei.TEPID)),
+		Body:  github.String(body),
+		Labels: &[]string{
+			ghclient.TrackingIssueLabel,
+			ei.TEPStatus.TrackingLabel(),
+		},
+		Assignees: &ei.Assignees,
+	}
+}
 
 // DefaultREADMEHandlerFunc returns a function that serves the default readme content
 func DefaultREADMEHandlerFunc() func(http.ResponseWriter, *http.Request) {

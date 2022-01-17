@@ -278,6 +278,33 @@ func (tgc *TEPGHClient) ExtractTEPInfoFromTEPPR(ctx context.Context, prNumber in
 	return teps, nil
 }
 
+// TEPInfoFromRepo fetches and parses the given TEP filename's Markdown into TEPInfo.
+func (tgc *TEPGHClient) TEPInfoFromRepo(ctx context.Context, tepID, filename string) (tep.TEPInfo, error) {
+	fn := filepath.Join("teps", filename)
+	fc, _, _, err := tgc.client.Repositories.GetContents(ctx, TEPsOwner, TEPsRepo, fn, &github.RepositoryContentGetOptions{
+		Ref: TEPsBranch,
+	})
+	if err != nil {
+		return tep.TEPInfo{}, errors.Wrapf(err, "fetching contents of https://github.com/%s/%s/blob/%s/%s", TEPsOwner, TEPsRepo,
+			TEPsBranch, fn)
+	}
+
+	mdStr, err := fc.GetContent()
+	if err != nil {
+		return tep.TEPInfo{}, errors.Wrapf(err, "reading contents of https://github.com/%s/%s/blob/%s/%s", TEPsOwner, TEPsRepo,
+			TEPsBranch, fn)
+	}
+
+	fnWithoutPrefix := strings.TrimPrefix(fn, "teps/")
+	info, err := tep.TEPInfoFromMarkdown(tepID, fnWithoutPrefix, mdStr)
+	if err != nil {
+		return tep.TEPInfo{}, errors.Wrapf(err, "parsing contents of https://github.com/%s/%s/blob/%s/%s", TEPsOwner, TEPsRepo,
+			TEPsBranch, fn)
+	}
+
+	return info, nil
+}
+
 // GetTrackingIssuesOptions allows configuring calls to GetTrackingIssues to filter on issue state, TEP status, or TEP ID
 type GetTrackingIssuesOptions struct {
 	IssueState string

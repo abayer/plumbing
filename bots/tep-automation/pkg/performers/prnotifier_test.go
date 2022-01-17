@@ -87,7 +87,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 		requests          map[string]func(w http.ResponseWriter, r *http.Request)
 		existingIssues    []*github.Issue
 		doesNothing       bool
-		modifiedIssues    []expectedIssue
+		modifiedIssues    []testutil.ExpectedIssue
 		expectedEventType string
 		expectedReason    string
 		expectedErr       error
@@ -162,7 +162,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 <!-- Implementation PR: repo: pipeline number: 77 -->
 <!-- Implementation PR: repo: triggers number: 88 -->`),
 			}},
-			modifiedIssues: []expectedIssue{{
+			modifiedIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					IssueNumber: 2,
 					TEPStatus:   tep.ProposedStatus,
@@ -184,7 +184,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 						},
 					},
 				},
-				filename: "1234-something-or-other.md",
+				Filename: "1234-something-or-other.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "CommentAdded",
@@ -272,7 +272,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 <!-- Implementation PR: repo: triggers number: 88 -->`),
 				},
 			},
-			modifiedIssues: []expectedIssue{
+			modifiedIssues: []testutil.ExpectedIssue{
 				{
 					TrackingIssue: tep.TrackingIssue{
 						IssueNumber: 2,
@@ -295,7 +295,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 							},
 						},
 					},
-					filename: "1234-something-or-other.md",
+					Filename: "1234-something-or-other.md",
 				},
 				{
 					TrackingIssue: tep.TrackingIssue{
@@ -319,7 +319,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 							},
 						},
 					},
-					filename: "5678-second-one.md",
+					Filename: "5678-second-one.md",
 				},
 			},
 			expectedEventType: corev1.EventTypeNormal,
@@ -442,7 +442,7 @@ func TestPRNotifier_Perform(t *testing.T) {
 			modifiedIssueCalls := 0
 
 			for _, modified := range tc.modifiedIssues {
-				ir := modified.toIssueRequest(t)
+				ir := modified.ToIssueRequest(t)
 				mux.HandleFunc(fmt.Sprintf("/repos/tektoncd/community/issues/%d", modified.IssueNumber),
 					func(w http.ResponseWriter, r *http.Request) {
 						v := new(github.IssueRequest)

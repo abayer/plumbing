@@ -48,6 +48,10 @@ ppc64le:
 bin/%: cmd/% FORCE
 	go build  $(LDFLAGS) -v -o $@ ./$<
 
+.PHONY: issues-from-repo
+issues-from-repo: $(BIN)
+	$(GO) build $(LDFLAGS) -o bin/tep-issues-from-repo ./cmd/util
+
 check: lint test
 
 .PHONY: test

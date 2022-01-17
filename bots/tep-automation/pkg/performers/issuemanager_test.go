@@ -22,29 +22,9 @@ import (
 	kreconciler "knative.dev/pkg/reconciler"
 )
 
-type expectedIssue struct {
-	tep.TrackingIssue
-	filename string
-}
-
 type closedIssue struct {
 	number  int
 	comment string
-}
-
-func (ei expectedIssue) toIssueRequest(t *testing.T) *github.IssueRequest {
-	body, err := ei.GetBody(ei.filename)
-	require.NoError(t, err)
-
-	return &github.IssueRequest{
-		Title: github.String(fmt.Sprintf(ghclient.TrackingIssueTitleFmt, ei.TEPID)),
-		Body:  github.String(body),
-		Labels: &[]string{
-			ghclient.TrackingIssueLabel,
-			ei.TEPStatus.TrackingLabel(),
-		},
-		Assignees: &ei.Assignees,
-	}
 }
 
 func TestIssueCreator_Perform(t *testing.T) {
@@ -59,8 +39,8 @@ func TestIssueCreator_Perform(t *testing.T) {
 		listFilesResponse []*github.CommitFile
 		existingIssues    []*github.Issue
 		closedIssues      []closedIssue
-		createdIssues     []expectedIssue
-		modifiedIssues    []expectedIssue
+		createdIssues     []testutil.ExpectedIssue
+		modifiedIssues    []testutil.ExpectedIssue
 		doesNothing       bool
 		expectedEventType string
 		expectedReason    string
@@ -87,14 +67,14 @@ func TestIssueCreator_Perform(t *testing.T) {
 				Filename: github.String("teps/1234-some-proposal.md"),
 				Status:   github.String("added"),
 			}},
-			createdIssues: []expectedIssue{{
+			createdIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					TEPStatus: tep.NewStatus,
 					TEPID:     "1234",
 					TEPPRs:    []int{1},
 					Assignees: []string{"abayer", "vdemeester"},
 				},
-				filename: "1234-some-proposal.md",
+				Filename: "1234-some-proposal.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "TrackingIssuesUpdatedOrCreated",
@@ -106,14 +86,14 @@ func TestIssueCreator_Perform(t *testing.T) {
 				Filename: github.String("teps/5678-just-cats.md"),
 				Status:   github.String("modified"),
 			}},
-			createdIssues: []expectedIssue{{
+			createdIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					TEPStatus: tep.ImplementingStatus,
 					TEPID:     "5678",
 					TEPPRs:    []int{1},
 					Assignees: []string{"abayer", "bobcatfish"},
 				},
-				filename: "5678-just-cats.md",
+				Filename: "5678-just-cats.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "TrackingIssuesUpdatedOrCreated",
@@ -150,7 +130,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 <!-- Implementation PR: repo: pipeline number: 77 -->
 <!-- Implementation PR: repo: triggers number: 88 -->`),
 			}},
-			modifiedIssues: []expectedIssue{{
+			modifiedIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					IssueNumber: 1,
 					TEPStatus:   tep.NewStatus,
@@ -168,7 +148,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 						},
 					},
 				},
-				filename: "1234-some-proposal.md",
+				Filename: "1234-some-proposal.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "TrackingIssuesUpdatedOrCreated",
@@ -208,14 +188,14 @@ func TestIssueCreator_Perform(t *testing.T) {
 <!-- Implementation PR: repo: pipeline number: 77 -->
 <!-- Implementation PR: repo: triggers number: 88 -->`),
 			}},
-			createdIssues: []expectedIssue{{
+			createdIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					TEPStatus: tep.NewStatus,
 					TEPID:     "1234",
 					TEPPRs:    []int{1},
 					Assignees: []string{"abayer", "vdemeester"},
 				},
-				filename: "1234-some-proposal.md",
+				Filename: "1234-some-proposal.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "TrackingIssuesUpdatedOrCreated",
@@ -253,7 +233,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 <!-- Implementation PR: repo: pipeline number: 77 -->
 <!-- Implementation PR: repo: triggers number: 88 -->`),
 			}},
-			modifiedIssues: []expectedIssue{{
+			modifiedIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					IssueNumber: 1,
 					TEPStatus:   tep.ProposedStatus,
@@ -271,7 +251,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 						},
 					},
 				},
-				filename: "1234-some-proposal.md",
+				Filename: "1234-some-proposal.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "TrackingIssuesUpdatedOrCreated",
@@ -344,7 +324,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 				comment: "Closing tracking issue for TEP-4321 because it has reached the terminal status `implemented`",
 				number:  1,
 			}},
-			modifiedIssues: []expectedIssue{{
+			modifiedIssues: []testutil.ExpectedIssue{{
 				TrackingIssue: tep.TrackingIssue{
 					IssueNumber: 1,
 					TEPStatus:   tep.ImplementedStatus,
@@ -362,7 +342,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 						},
 					},
 				},
-				filename: "4321-another-proposal.md",
+				Filename: "4321-another-proposal.md",
 			}},
 			expectedEventType: corev1.EventTypeNormal,
 			expectedReason:    "TrackingIssuesUpdatedOrCreated",
@@ -461,7 +441,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 						matchedIR := false
 
 						for _, created := range tc.createdIssues {
-							ir := created.toIssueRequest(t)
+							ir := created.ToIssueRequest(t)
 
 							if cmp.Equal(ir, v) {
 								matchedIR = true
@@ -496,7 +476,7 @@ func TestIssueCreator_Perform(t *testing.T) {
 							expectedClosedIssues[modified.IssueNumber] = true
 							closedIssueCalls++
 						} else {
-							ir := modified.toIssueRequest(t)
+							ir := modified.ToIssueRequest(t)
 
 							if d := cmp.Diff(ir, v); d != "" {
 								t.Errorf("difference in PATCH body: %s", d)

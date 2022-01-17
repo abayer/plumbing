@@ -908,3 +908,38 @@ func TestGetTrackingIssues(t *testing.T) {
 		})
 	}
 }
+
+func TestTEPInfoFromRepo(t *testing.T) {
+	client, mux, closeFunc := testutil.SetupFakeGitHub()
+	defer closeFunc()
+
+	tepFn := filepath.Join("testdata", "1234-some-proposal.md")
+	contentBytes, err := ioutil.ReadFile(tepFn)
+	require.NoError(t, err)
+	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/contents/%s/1234-some-proposal.md", ghclient.TEPsOwner, ghclient.TEPsRepo,
+		ghclient.TEPsDirectory),
+		func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasSuffix(r.RequestURI, fmt.Sprintf("?ref=%s", ghclient.TEPsBranch)) {
+				t.Errorf("expected request for branch %s, but URI was %s", ghclient.TEPsBranch, r.RequestURI)
+			}
+			_, _ = fmt.Fprint(w, testutil.GHContentJSON(string(contentBytes)))
+		})
+
+	tgc := ghclient.NewTEPGHClient(client)
+
+	ctx := context.Background()
+
+	expectedInfo := tep.TEPInfo{
+		ID:           "1234",
+		Title:        "Some New Feature",
+		Status:       tep.ProposedStatus,
+		Filename:     "1234-some-proposal.md",
+		LastModified: time.Date(2022, time.January, 6, 0, 0, 0, 0, time.UTC),
+		Authors:      []string{"abayer", "vdemeester"},
+	}
+
+	ti, err := tgc.TEPInfoFromRepo(ctx, "1234", "1234-some-proposal.md")
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedInfo, ti)
+}
